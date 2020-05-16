@@ -26,6 +26,4 @@
     
   Play Audio with Transcript:
 
-    ```
     $ python main.py
-    ```
