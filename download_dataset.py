@@ -25,7 +25,7 @@ with open(local_filename, "wb") as f:
 
 
 with zipfile.ZipFile(local_filename, 'r') as zip_ref:
-  print('Extracting Dataset ...')
+  print('\n\nExtracting Dataset. It may take some time ...')
   zip_ref.extractall()
 
 print('Dataset Extracted.')
