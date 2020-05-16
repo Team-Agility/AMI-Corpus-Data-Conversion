@@ -3,6 +3,7 @@ from playsound import playsound
 import time
 import glob
 import os
+import shutil
 
 def GetAllMeetingIDs():
   return [ os.path.basename(folder_path) for folder_path in glob.glob(f'amicorpus/ES*')]
@@ -24,6 +25,7 @@ class Audio:
     return f'amicorpus/{self.meeting_id}/audio/{self.meeting_id}.Mix-Headset.wav'
 
   def play(self):
+    print(f'Playing {self.meeting_id} ....')
     playsound(self.path(), False)
 
   def transcript_xmls(self):
