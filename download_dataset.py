@@ -3,7 +3,7 @@ import zipfile
 import sys
 import os
 
-DATASET_URL = 'https://objectstorage.ap-mumbai-1.oraclecloud.com/n/bm7noglpf2jq/b/FYP-Data/o/AMI%20ES%20Audio%20Dataset%20with%20Manual%20Annotation%20v1.6.2.zip'
+DATASET_URL = 'https://objectstorage.ap-mumbai-1.oraclecloud.com/n/bm7noglpf2jq/b/FYP-Data/o/AMI_ES_Audio_Dataset_with_Manual_Annotation_v1.6.2.zip'
 
 local_filename = DATASET_URL.split('/')[-1]
 with open(local_filename, "wb") as f:

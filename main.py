@@ -8,17 +8,28 @@ import shutil
 def GetAllMeetingIDs():
   return [ os.path.basename(folder_path) for folder_path in glob.glob(f'amicorpus/ES*')]
 
-class Audio:
+class Meeting:
   def __init__(self, meeting_id):
     self.meeting_id = meeting_id
 
   def get_speaker(self, agent):
     meetings_meta_root = ET.parse('AMI manual annotations v1.6.2/corpusResources/meetings.xml').getroot()
+    participants_meta_root = ET.parse('AMI manual annotations v1.6.2/corpusResources/participants.xml').getroot()
     for speaker in meetings_meta_root.iter('speaker'):
       if speaker.get('{http://nite.sourceforge.net/}id').startswith(self.meeting_id) and speaker.get('nxt_agent') == agent:
+        participant_meta = {}
+        for participant in participants_meta_root.iter('participant'):
+          if participant.get('{http://nite.sourceforge.net/}id') == speaker.get('global_name') and self.meeting_id.startswith(participant.get('meeting')):
+            participant_meta = dict(participant.items())
+            participant_meta['region'] = participant[0].get('region')
+
         return {
           'global_name': speaker.get('global_name'),
-          'role': speaker.get('role')
+          'role': speaker.get('role'),
+          'sex': participant_meta['sex'],
+          'age': int(float(participant_meta['age_at_collection'])),
+          'native_language': participant_meta['native_language'],
+          'region': participant_meta['region']
         }
 
   def path(self):
@@ -39,7 +50,7 @@ class Audio:
     transcript_file_paths = self.transcript_xmls()
     for agent in transcript_file_paths.keys():
       speaker = self.get_speaker(agent)
-      print(f"Agent ID: {agent}, Global Name: {speaker['global_name']}, Role: {speaker['role']}")
+      print(f"Agent ID: {agent}, Global Name: {speaker['global_name']}, Role: {speaker['role']}, Sex: {speaker['sex']}, Age: {speaker['age']}, Native Language: {speaker['native_language']}, Region: {speaker['region']}")
 
   def print_transcript(self):   
     print(f'\n--------------- Transcript -----------------')
@@ -59,7 +70,7 @@ class Audio:
 
 all_meeting_ids = GetAllMeetingIDs()
 for meeting_id in all_meeting_ids:
-  meeting = Audio(meeting_id)
+  meeting = Meeting(meeting_id)
   meeting.play()
   meeting.print_meeting_metadata()
   meeting.print_transcript()

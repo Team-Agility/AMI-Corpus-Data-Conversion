@@ -14,7 +14,7 @@
 
 3. Download Dataset
 
-    Estimated Size: 1.96 GiB.
+    Estimated Size: 1.98 GiB.
 
     ```
     $ python download_dataset.py
