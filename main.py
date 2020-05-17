@@ -13,7 +13,7 @@ class Audio:
     self.meeting_id = meeting_id
 
   def get_speaker(self, agent):
-    meetings_meta_root = ET.parse('xml/corpusResources/meetings.xml').getroot()
+    meetings_meta_root = ET.parse('AMI manual annotations v1.6.2/corpusResources/meetings.xml').getroot()
     for speaker in meetings_meta_root.iter('speaker'):
       if speaker.get('{http://nite.sourceforge.net/}id').startswith(self.meeting_id) and speaker.get('nxt_agent') == agent:
         return {
@@ -30,7 +30,7 @@ class Audio:
 
   def transcript_xmls(self):
     file_paths = {}
-    for file_path in glob.glob(f'xml/words/{self.meeting_id}*'):
+    for file_path in glob.glob(f'AMI manual annotations v1.6.2/words/{self.meeting_id}*'):
       file_paths[os.path.basename(file_path).split('.')[1]] = ET.parse(file_path).getroot()
     return file_paths
 

@@ -14,7 +14,7 @@
 
 3. Download Dataset
 
-    Estimated Size: 1.94 GiB.
+    Estimated Size: 1.96 GiB.
 
     ```
     $ python download_dataset.py
@@ -24,6 +24,6 @@
 
 ## Dataset Conversion
     
-  Play Audio with Transcript:
+  ### Play Audio with Transcript:
 
     $ python main.py
