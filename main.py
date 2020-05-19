@@ -107,12 +107,12 @@ class Meeting:
       for agent, root in transcript_file_xml.items():
         for word in root.findall('w'):
           time_escaped = time.time() - timer
-          starttime = float(word.get('starttime'))
-          endtime = float(word.get('endtime'))
+          start_time = float(word.get('starttime'))
+          end_time = float(word.get('endtime'))
           #is_punction = bool(word.get('punc'))
           content = word.text
-          if time_escaped <= starttime and time_escaped +1 >= starttime:
-            print(f'{agent}:', starttime, endtime, content)
+          if time_escaped <= start_time and time_escaped +1 >= start_time:
+            print(f'{agent}:', start_time, end_time, content)
       time.sleep(1)
 
   def copy_audio_dataset(self):
@@ -138,8 +138,8 @@ class Meeting:
         if not word.get('starttime'):
           continue
         id = word.get(NITE_ID)
-        starttime = float(word.get('starttime'))
-        endtime = float(word.get('endtime'))
+        start_time = float(word.get('starttime'))
+        end_time = float(word.get('endtime'))
         is_punction = bool(word.get('punc'))
         content = word.text
 
@@ -149,8 +149,8 @@ class Meeting:
         self.words_tracker[agent][id] = True
         transcript['transcript'].append({
           'speaker_id': agent,
-          'starttime': starttime,
-          'endtime': endtime,
+          'start_time': start_time,
+          'end_time': end_time,
           'content': content,
           'is_punction': is_punction
         })
@@ -177,6 +177,8 @@ class Meeting:
     return False
 
   def get_words_by_range(self, word_range_href):
+    start_time = 99999999.99
+    end_time = 0.00
     word_range = word_range_href.split('#')[1].split('..')
     word_id_prefix = '.'.join(word_range[0].replace('id(', '').replace(')', '').split('.')[0:-1])
     if len(word_range) < 2:
@@ -191,9 +193,13 @@ class Meeting:
       if not bool(word_xml.get('punc')) and len(act) > 0:
         act += ' '
       act += word_xml.text
+      if start_time > float(word_xml.get('starttime')):
+        start_time = float(word_xml.get('starttime'))
+      if end_time < float(word_xml.get('endtime')):
+        end_time = float(word_xml.get('endtime'))
     if act == '':
-      return False
-    return act
+      return [False, start_time, end_time]
+    return [act, start_time, end_time]
 
   def convert_dialog_acts_to_json(self):
     print(f'Converting Dialog Act {self.meeting_id} ...')
@@ -217,11 +223,13 @@ class Meeting:
         if da_type is not None:
           act_data['type'] = self.da_types[da_type.get('href').split('#')[1].replace('id(', '').replace(')', '')]
         if words is not None:
-          act = self.get_words_by_range(words.get('href'))          
+          act, start_time, end_time = self.get_words_by_range(words.get('href'))          
           if not act:
             continue
 
           act_data['act'] = act
+          act_data['start_time'] = start_time
+          act_data['end_time'] = end_time
           self.dialog_acts[act_xml.get(NITE_ID)] = act
         dialog_acts['acts'].append(act_data)
 
