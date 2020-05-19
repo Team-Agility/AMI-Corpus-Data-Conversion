@@ -27,6 +27,7 @@ class Meeting:
     self._init_words_tracker()
 
     self.da_types = {}
+    self.dialog_acts = {}
     self._init_da_types()
 
 
@@ -179,6 +180,25 @@ class Meeting:
       return self.words[id]
     return False
 
+  def get_words_by_range(self, word_range_href):
+    word_range = word_range_href.split('#')[1].split('..')
+    word_id_prefix = '.'.join(word_range[0].replace('id(', '').replace(')', '').split('.')[0:-1])
+    if len(word_range) < 2:
+      word_range.append(word_range[0])
+    start, end = map(int, [word_no.replace('id(', '').replace(')', '').split('.')[-1].replace('words', '') for word_no in word_range])
+    
+    act = ''
+    for i in range(start, end+1):
+      word_xml = self.get_word_by_id(f'{word_id_prefix}.words{i}')
+      if word_xml == False:
+        continue
+      if not bool(word_xml.get('punc')) and len(act) > 0:
+        act += ' '
+      act += word_xml.text
+    if act == '':
+      return False
+    return act
+
   def convert_dialog_acts_to_json(self):
     print(f'Converting Dialog Act {self.meeting_id} ...')
 
@@ -190,42 +210,109 @@ class Meeting:
     transcript_file_xml = self.get_dialog_act_xml_roots()
     for agent, root in transcript_file_xml.items():
       dialog_acts['speakers'][agent] = self.get_participant_meta(agent)
-      for act in root.findall('dact'):
+      for act_xml in root.findall('dact'):
         act_data = {
-          'id': int(act.get(NITE_ID).split('.')[-1]),
+          'id': int(act_xml.get(NITE_ID).split('.')[-1]),
           'speaker_id': agent
         }
-        da_type = act.find('{http://nite.sourceforge.net/}pointer')
-        words = act.find('{http://nite.sourceforge.net/}child')
+        da_type = act_xml.find('{http://nite.sourceforge.net/}pointer')
+        words = act_xml.find('{http://nite.sourceforge.net/}child')
         
         if da_type is not None:
           act_data['type'] = self.da_types[da_type.get('href').split('#')[1].replace('id(', '').replace(')', '')]
         if words is not None:
-          word_range = words.get('href').split('#')[1].split('..')
-          word_id_prefix = '.'.join(word_range[0].replace('id(', '').replace(')', '').split('.')[0:-1])
-          if len(word_range) < 2:
-            word_range.append(word_range[0])
-          start, end = map(int, [word_no.replace('id(', '').replace(')', '').split('.')[-1].replace('words', '') for word_no in word_range])
-          act = ''
-          for i in range(start, end+1):
-            word_xml = self.get_word_by_id(f'{word_id_prefix}.words{i}')
-            if word_xml == False:
-              continue
-            if not bool(word_xml.get('punc')) and len(act) > 0:
-              act += ' '
-            act += word_xml.text
-          if act == '':
+          act = self.get_words_by_range(words.get('href'))          
+          if not act:
             continue
+
           act_data['act'] = act
+          self.dialog_acts[act_xml.get(NITE_ID)] = act
         dialog_acts['acts'].append(act_data)
 
     with open(f'{dest_folder}/dialog_acts.json', 'w') as fp:
       json.dump(dialog_acts, fp, sort_keys=True, indent=2)
 
+  def get_dialog_acts_by_range(self, dialog_act_range_href):
+    dialog_act_range = dialog_act_range_href.split('#')[1].split('..')
+    dialog_act_id_prefix = '.'.join(dialog_act_range[0].replace('id(', '').replace(')', '').split('.')[0:-1])
+    if len(dialog_act_range) < 2:
+      dialog_act_range.append(dialog_act_range[0])
+    start, end = map(int, [dialog_act_no.replace('id(', '').replace(')', '').split('.')[-1].replace('dialog-act', '') for dialog_act_no in dialog_act_range])
+    
+    dialog_acts = ''
+    for i in range(start, end+1):
+      if f'{dialog_act_id_prefix}.{i}' not in self.dialog_acts:
+        continue
+      dialog_act_xml = self.dialog_acts[f'{dialog_act_id_prefix}.{i}']
+      if dialog_act_xml == False:
+        continue
+      if len(dialog_acts) > 0:
+        dialog_acts += ' '
+      dialog_acts += dialog_act_xml
+    if dialog_acts == '':
+      return False
+    return dialog_acts
+
+
+  def convert_extractive_summary_to_json(self):
+    print(f'Converting Extractive Summary {self.meeting_id} ...')
+
+    ext_summs = []
+    dest_folder = f'{DATASET_OUT_DIR}/{self.meeting_id}'
+    ext_summ_file_xml = ET.parse(f'{AMI_DATASET_DIR}/extractive/{meeting_id}.extsumm.xml').getroot()
+
+    for ext_summ in ext_summ_file_xml:
+      for dialog_act_xml in ext_summ.findall('{http://nite.sourceforge.net/}child'):
+        dialog_act_href = dialog_act_xml.get('href')
+        dialog_act = self.get_dialog_acts_by_range(dialog_act_href)        
+        
+        dialog_act_range = dialog_act_href.split('#')[1].split('..')
+        if len(dialog_act_range) < 2:
+          dialog_act_range.append(dialog_act_range[0])
+        start, end = map(int, [dialog_act_no.replace('id(', '').replace(')', '').split('.')[-1].replace('dialog-act', '') for dialog_act_no in dialog_act_range])
+
+        ext_summs.append({
+          'dialog_act': dialog_act,
+          'speaker_id': dialog_act_range[0].replace('id(', '').replace(')', '').split('.')[1],
+          'dialog_act_start_id': start,
+          'dialog_act_end_id': end,
+
+        })
+
+    with open(f'{dest_folder}/extractive_summary.json', 'w') as fp:
+      json.dump(ext_summs, fp, sort_keys=True, indent=2)
+
+  def convert_abstractive_summary_to_json(self):
+    print(f'Converting Abstractive Summary {self.meeting_id} ...')
+
+    abs_summs = {
+      'abstract': [],
+      'actions': [],
+      'decisions': [],
+      'problems': []
+    }
+    dest_folder = f'{DATASET_OUT_DIR}/{self.meeting_id}'
+    abs_summ_file_xml = ET.parse(f'{AMI_DATASET_DIR}/abstractive/{meeting_id}.abssumm.xml').getroot()
+
+    for abstract in abs_summ_file_xml.find('abstract').findall('sentence'):
+      abs_summs['abstract'].append(abstract.text)
+    for action in abs_summ_file_xml.find('actions').findall('sentence'):
+      abs_summs['actions'].append(action.text)
+    for decision in abs_summ_file_xml.find('decisions').findall('sentence'):
+      abs_summs['decisions'].append(decision.text)
+    for problem in abs_summ_file_xml.find('problems').findall('sentence'):
+      abs_summs['problems'].append(problem.text)
+
+    with open(f'{dest_folder}/abstractive_summary.json', 'w') as fp:
+      json.dump(abs_summs, fp, sort_keys=True, indent=2)
+
+
 all_meeting_ids = GetAllMeetingIDs()
 for meeting_id in all_meeting_ids:
   meeting = Meeting(meeting_id)
   meeting.print_meeting_metadata()
-  #meeting.copy_audio_dataset()
-  #meeting.convert_transcript_to_json()
+  meeting.copy_audio_dataset()
+  meeting.convert_transcript_to_json()
   meeting.convert_dialog_acts_to_json()
+  meeting.convert_extractive_summary_to_json()
+  meeting.convert_abstractive_summary_to_json()
