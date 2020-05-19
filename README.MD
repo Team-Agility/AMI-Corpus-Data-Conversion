@@ -24,6 +24,6 @@
 
 ## Dataset Conversion
     
-  ### Play Audio with Transcript:
+  ### Convert XML Annotations to JSON:
 
     $ python main.py

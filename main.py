@@ -30,6 +30,9 @@ class Meeting:
     self.dialog_acts = {}
     self._init_da_types()
 
+    self.dest_folder = f'{DATASET_OUT_DIR}/{self.meeting_id}'
+    os.makedirs(self.dest_folder, exist_ok=True)
+
 
   def _init_words_tracker(self):
     transcript_file_xml = self.get_transcript_xml_roots()
@@ -120,10 +123,8 @@ class Meeting:
   def copy_audio_dataset(self):
     print(f'Copying Audio: {self.meeting_id} ...')
 
-    dest_folder = f'{DATASET_OUT_DIR}/{self.meeting_id}'
-    os.makedirs(dest_folder, exist_ok=True)
     src_audio_path = self.get_audio_path()
-    dest_audio_path = f'{dest_folder}/audio.wav'
+    dest_audio_path = f'{self.dest_folder}/audio.wav'
     shutil.copyfile(src_audio_path, dest_audio_path)
     print()
 
@@ -134,7 +135,7 @@ class Meeting:
       'transcript': [],
       'speakers': {}
     }
-    dest_folder = f'{DATASET_OUT_DIR}/{self.meeting_id}'
+    
     transcript_file_xml = self.get_transcript_xml_roots()
     for agent, root in transcript_file_xml.items():
       transcript['speakers'][agent] = self.get_participant_meta(agent)
@@ -162,7 +163,7 @@ class Meeting:
     if len(transcript['transcript']) != sum(self.words_count.values()):
       input(colored(f'Error in Word Count. Missing {sum(self.words_count.values()) - len(transcript["transcript"])} Words. \nPress any key to continue...', 'yellow'))
 
-    with open(f'{dest_folder}/transcript.json', 'w') as fp:
+    with open(f'{self.dest_folder}/transcript.json', 'w') as fp:
       json.dump(transcript, fp, sort_keys=True, indent=2)
 
   def get_dialog_act_xml_roots(self):
@@ -206,7 +207,7 @@ class Meeting:
       'acts': [],
       'speakers': {}
     }
-    dest_folder = f'{DATASET_OUT_DIR}/{self.meeting_id}'
+    
     transcript_file_xml = self.get_dialog_act_xml_roots()
     for agent, root in transcript_file_xml.items():
       dialog_acts['speakers'][agent] = self.get_participant_meta(agent)
@@ -229,7 +230,7 @@ class Meeting:
           self.dialog_acts[act_xml.get(NITE_ID)] = act
         dialog_acts['acts'].append(act_data)
 
-    with open(f'{dest_folder}/dialog_acts.json', 'w') as fp:
+    with open(f'{self.dest_folder}/dialog_acts.json', 'w') as fp:
       json.dump(dialog_acts, fp, sort_keys=True, indent=2)
 
   def get_dialog_acts_by_range(self, dialog_act_range_href):
@@ -258,7 +259,6 @@ class Meeting:
     print(f'Converting Extractive Summary {self.meeting_id} ...')
 
     ext_summs = []
-    dest_folder = f'{DATASET_OUT_DIR}/{self.meeting_id}'
     ext_summ_file_xml = ET.parse(f'{AMI_DATASET_DIR}/extractive/{meeting_id}.extsumm.xml').getroot()
 
     for ext_summ in ext_summ_file_xml:
@@ -279,7 +279,7 @@ class Meeting:
 
         })
 
-    with open(f'{dest_folder}/extractive_summary.json', 'w') as fp:
+    with open(f'{self.dest_folder}/extractive_summary.json', 'w') as fp:
       json.dump(ext_summs, fp, sort_keys=True, indent=2)
 
   def convert_abstractive_summary_to_json(self):
@@ -291,7 +291,7 @@ class Meeting:
       'decisions': [],
       'problems': []
     }
-    dest_folder = f'{DATASET_OUT_DIR}/{self.meeting_id}'
+    
     abs_summ_file_xml = ET.parse(f'{AMI_DATASET_DIR}/abstractive/{meeting_id}.abssumm.xml').getroot()
 
     for abstract in abs_summ_file_xml.find('abstract').findall('sentence'):
@@ -303,7 +303,7 @@ class Meeting:
     for problem in abs_summ_file_xml.find('problems').findall('sentence'):
       abs_summs['problems'].append(problem.text)
 
-    with open(f'{dest_folder}/abstractive_summary.json', 'w') as fp:
+    with open(f'{self.dest_folder}/abstractive_summary.json', 'w') as fp:
       json.dump(abs_summs, fp, sort_keys=True, indent=2)
 
 
