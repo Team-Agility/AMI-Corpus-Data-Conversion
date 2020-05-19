@@ -1,5 +1,4 @@
 import xml.etree.ElementTree as ET
-from playsound import playsound
 from termcolor import colored
 import time
 import glob
@@ -80,10 +79,6 @@ class Meeting:
   def get_audio_path(self):
     return f'amicorpus/{self.meeting_id}/audio/{self.meeting_id}.Mix-Headset.wav'
 
-  def play_audio(self):
-    print(f'Playing {self.meeting_id} ....')
-    playsound(self.get_audio_path(), False)
-
   def get_transcript_xml_roots(self):
     file_paths = {}
     for file_path in glob.glob(f'{AMI_DATASET_DIR}/words/{self.meeting_id}*'):
@@ -105,7 +100,7 @@ class Meeting:
       print(f"Agent ID: {agent}, Global Name: {speaker['global_name']}, Role: {speaker['role']}, Sex: {speaker['sex']}, Age: {speaker['age']}, Native Language: {speaker['native_language']}, Region: {speaker['region']}, Total Words in Transcript: {transcript_word_count}")
 
   def print_transcript(self):   
-    print(f'\n--------------- Transcript -----------------')
+    print(f'--------------- Transcript -----------------')
     timer = time.time() 
     transcript_file_xml = self.get_transcript_xml_roots()
     while True:
