@@ -47,13 +47,13 @@ class Meeting:
     da_types_root = ET.parse(f'{AMI_DATASET_DIR}/ontologies/da-types.xml').getroot()
     for da_type in da_types_root:
       self.da_types[da_type.get(NITE_ID)] = {
-        'name': da_type.get('gloss'),
-        'parent': None
+        'main_type': da_type.get('gloss'),
+        'sub_type': None
       }
       for da_type_child in da_type:
         self.da_types[da_type_child.get(NITE_ID)] = {
-        'name': da_type_child.get('gloss'),
-        'parent': da_type.get('gloss')
+        'main_type': da_type.get('gloss'),
+        'sub_type': da_type_child.get('gloss')
       }
 
   def get_participant_meta(self, agent):
@@ -230,7 +230,7 @@ class Meeting:
           act_data['act'] = act
           act_data['start_time'] = start_time
           act_data['end_time'] = end_time
-          self.dialog_acts[act_xml.get(NITE_ID)] = act
+          self.dialog_acts[act_xml.get(NITE_ID)] = act_data
         dialog_acts['acts'].append(act_data)
 
     with open(f'{self.dest_folder}/dialog_acts.json', 'w') as fp:
@@ -247,7 +247,7 @@ class Meeting:
     for i in range(start, end+1):
       if f'{dialog_act_id_prefix}.{i}' not in self.dialog_acts:
         continue
-      dialog_act_xml = self.dialog_acts[f'{dialog_act_id_prefix}.{i}']
+      dialog_act_xml = self.dialog_acts[f'{dialog_act_id_prefix}.{i}']['act']
       if dialog_act_xml == False:
         continue
       if len(dialog_acts) > 0:
@@ -274,12 +274,21 @@ class Meeting:
           dialog_act_range.append(dialog_act_range[0])
         start, end = map(int, [dialog_act_no.replace('id(', '').replace(')', '').split('.')[-1].replace('dialog-act', '') for dialog_act_no in dialog_act_range])
 
+        ext_summ = self.dialog_acts[dialog_act_range[0].replace('id(', '').replace(')', '')]
+        main_type = None
+        sub_type = None
+        if 'type' in ext_summ:
+          main_type = ext_summ['type']['main_type']
+          sub_type = ext_summ['type']['sub_type']
         ext_summs.append({
           'dialog_act': dialog_act,
           'speaker_id': dialog_act_range[0].replace('id(', '').replace(')', '').split('.')[1],
           'dialog_act_start_id': start,
           'dialog_act_end_id': end,
-
+          'type': {
+            'main_type': main_type,
+            'sub_type': sub_type
+          }
         })
 
     with open(f'{self.dest_folder}/extractive_summary.json', 'w') as fp:
