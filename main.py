@@ -10,6 +10,8 @@ import json
 os.system('color')
 
 NITE_ID = '{http://nite.sourceforge.net/}id'
+NITE_POINTER = '{http://nite.sourceforge.net/}pointer'
+NITE_CHILD = '{http://nite.sourceforge.net/}child'
 AMI_DATASET_DIR = 'AMI manual annotations v1.6.2'
 DATASET_OUT_DIR = 'dataset'
 WARNINGS_COUNT = 0
@@ -36,6 +38,9 @@ class Meeting:
     self.da_types = {}
     self.dialog_acts = {}
     self._init_da_types()
+
+    self.ap_types = {}
+    self._init_ap_types()
 
     self.topics = {}
     self._init_topics()
@@ -72,6 +77,14 @@ class Meeting:
         'main_type': da_type.get('gloss'),
         'sub_type': da_type_child.get('gloss')
       }
+
+  """
+    Initiaize Adjacency Pairs Types
+  """
+  def _init_ap_types(self):
+    ap_types_root = ET.parse(f'{AMI_DATASET_DIR}/ontologies/ap-types.xml').getroot()
+    for ap_type in ap_types_root.findall('ap-type'):
+      self.ap_types[ap_type.get(NITE_ID)] = ap_type.get('gloss')
 
   """
     Initiaize Topics
@@ -324,8 +337,8 @@ class Meeting:
           'id': int(act_xml.get(NITE_ID).split('.')[-1]),
           'speaker_id': agent
         }
-        da_type = act_xml.find('{http://nite.sourceforge.net/}pointer')
-        words = act_xml.find('{http://nite.sourceforge.net/}child')
+        da_type = act_xml.find(NITE_POINTER)
+        words = act_xml.find(NITE_CHILD)
         
         if da_type is not None:
           act_data['type'] = self.da_types[da_type.get('href').split('#')[1].replace('id(', '').replace(')', '')]
@@ -357,18 +370,30 @@ class Meeting:
     start, end = map(int, [dialog_act_no.replace('id(', '').replace(')', '').split('.')[-1].replace('dialog-act', '') for dialog_act_no in dialog_act_range])
     
     dialog_acts = ''
+    start_time = 99999999.99
+    end_time = 0.00
     for i in range(start, end+1):
       if f'{dialog_act_id_prefix}.{i}' not in self.dialog_acts:
         continue
-      dialog_act_xml = self.dialog_acts[f'{dialog_act_id_prefix}.{i}']['act']
-      if dialog_act_xml == False:
+      dialog_act = self.dialog_acts[f'{dialog_act_id_prefix}.{i}']['act']
+      start_time = min(self.dialog_acts[f'{dialog_act_id_prefix}.{i}']['start_time'], start_time)
+      end_time = max(self.dialog_acts[f'{dialog_act_id_prefix}.{i}']['end_time'], end_time)
+      if dialog_act == False:
         continue
       if len(dialog_acts) > 0:
         dialog_acts += ' '
-      dialog_acts += dialog_act_xml
+      dialog_acts += dialog_act
     if dialog_acts == '':
-      return False
-    return dialog_acts
+      return {
+        'act': False,
+        'start_time': start_time,
+        'end_time': end_time
+      }
+    return {
+        'act': dialog_acts,
+        'start_time': start_time,
+        'end_time': end_time
+      }
 
   """
     Convert Extractive Summary to JSON
@@ -380,9 +405,9 @@ class Meeting:
     ext_summ_file_xml = ET.parse(f'{AMI_DATASET_DIR}/extractive/{meeting_id}.extsumm.xml').getroot()
 
     for ext_summ in ext_summ_file_xml:
-      for dialog_act_xml in ext_summ.findall('{http://nite.sourceforge.net/}child'):
+      for dialog_act_xml in ext_summ.findall(NITE_CHILD):
         dialog_act_href = dialog_act_xml.get('href')
-        dialog_act = self.get_dialog_acts_by_range(dialog_act_href)        
+        dialog_act = self.get_dialog_acts_by_range(dialog_act_href)['act']      
         
         dialog_act_range = dialog_act_href.split('#')[1].split('..')
         if len(dialog_act_range) < 2:
@@ -454,7 +479,7 @@ class Meeting:
 
     for decision in abs_summ_file_xml.findall('decision'):
       decisions.append([])
-      decision_points = decision.findall('{http://nite.sourceforge.net/}child')
+      decision_points = decision.findall(NITE_CHILD)
       for decision_point in decision_points:
         decision_point_href = decision_point.get('href')
         act, start_time, end_time = itemgetter('act', 'start_time', 'end_time')(self.get_words_by_range(decision_point_href))         
@@ -479,7 +504,7 @@ class Meeting:
 
     for agent, root in segments_xml_roots.items():
       for segment in root.findall('segment'):
-        content_words_href = segment.find('{http://nite.sourceforge.net/}child').get('href')
+        content_words_href = segment.find(NITE_CHILD).get('href')
         content = self.get_words_by_range(content_words_href)
         start_time = float(segment.get('transcriber_start'))
         end_time = float(segment.get('transcriber_end'))
@@ -512,12 +537,12 @@ class Meeting:
 
     for topic in topics_file_xml.findall('topic'):
       other_description = topic.get('other_description')
-      topic_id = topic.find('{http://nite.sourceforge.net/}pointer').get('href').replace('default-topics.xml#id(', '').replace(')', '')
-      topic_sentenses = topic.findall('{http://nite.sourceforge.net/}child')
+      topic_id = topic.find(NITE_POINTER).get('href').replace('default-topics.xml#id(', '').replace(')', '')
+      topic_sentenses = topic.findall(NITE_CHILD)
       acts = []
       for topic_sentense in topic_sentenses:
-        act = self.get_words_by_range(topic_sentense.get('href'))['act']
-        if act:
+        act = self.get_words_by_range(topic_sentense.get('href'))
+        if act['act']:
           acts.append(act)
       topics.append({
         'topic': self.topics[topic_id],
@@ -528,6 +553,31 @@ class Meeting:
     with open(f'{self.dest_folder}/topic_segmentation.json', 'w') as fp:
       json.dump(topics, fp, sort_keys=True, indent=2)
 
+  """
+    Convert Adjacency Pairs to JSON
+  """
+  def convert_adjacency_pairs_to_json(self):
+    print(f'Converting Adjacency Pairs {self.meeting_id} ...')
+
+    adjacency_pairs = []
+    adjacency_pairs_xml_path = f'{AMI_DATASET_DIR}/dialogueActs/{meeting_id}.adjacency-pairs.xml'
+    adjacency_pairs_file_xml = ET.parse(adjacency_pairs_xml_path).getroot()
+
+    for adjacency_pair in adjacency_pairs_file_xml.findall('adjacency-pair'):
+      adjacency_pair_type = adjacency_pair.find(".//*[@role='type']").get('href')
+      source = adjacency_pair.find(".//*[@role='source']").get('href') if adjacency_pair.find(".//*[@role='source']") is not None else None
+      target = adjacency_pair.find(".//*[@role='target']").get('href') if adjacency_pair.find(".//*[@role='target']") is not None else None
+      
+      if source or target:
+        adjacency_pairs.append({
+          'type': self.ap_types[adjacency_pair_type.replace('ap-types.xml#id(', '').replace(')', '')],
+          'source': self.get_dialog_acts_by_range(source) if source else None,
+          'target': self.get_dialog_acts_by_range(target) if target else None
+        })
+    
+    with open(f'{self.dest_folder}/adjacency_pairs.json', 'w') as fp:
+      json.dump(adjacency_pairs, fp, sort_keys=True, indent=2)
+
 # Main
 all_meeting_ids = GetAllMeetingIDs()
 for meeting_id in all_meeting_ids:
@@ -536,6 +586,7 @@ for meeting_id in all_meeting_ids:
   meeting.copy_audio_dataset()
   meeting.convert_transcript_to_json()
   meeting.convert_dialog_acts_to_json()
+  meeting.convert_adjacency_pairs_to_json()
   meeting.convert_segments_to_json()
   meeting.convert_decision_points_to_json()
   meeting.convert_topics_to_json()
