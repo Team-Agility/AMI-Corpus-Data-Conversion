@@ -239,7 +239,7 @@ class Meeting:
     Get Words By Range
 
     :param word_range_href: Word Range HREF (XXXXXXx.X.words.xml#id(XXXXXXx.X.wordsx)..id(XXXXXXx.X.wordsx))
-    :return: Array with Dialog Act, Start Time, End Time
+    :return: dict with Dialog Act, Start Time & End Time
   """
   def get_words_by_range(self, word_range_href):
     start_time = 99999999.99
