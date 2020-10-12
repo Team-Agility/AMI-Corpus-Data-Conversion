@@ -12,6 +12,8 @@ os.system('color')
 NITE_ID = '{http://nite.sourceforge.net/}id'
 AMI_DATASET_DIR = 'AMI manual annotations v1.6.2'
 DATASET_OUT_DIR = 'dataset'
+WARNINGS_COUNT = 0
+ERROR_COUNT = 0
 
 """
   Get All Dataset's Meeting IDs
@@ -173,6 +175,7 @@ class Meeting:
   """
   def convert_transcript_to_json(self):
     print(f'Converting Transcript {self.meeting_id} ...')
+    global WARNINGS_COUNT
 
     transcript = {
       'transcript': [],
@@ -192,7 +195,8 @@ class Meeting:
         content = word.text
 
         if self.words_tracker[agent][id]:
-          input(colored(f'Word {id} Already Converted. \nPress any key to continue...', 'yellow'))
+          print(colored(f'Word {id} Already Converted. \nPress any key to continue...', 'yellow'))
+          WARNINGS_COUNT += 1
           
         self.words_tracker[agent][id] = True
         transcript['transcript'].append({
@@ -204,7 +208,8 @@ class Meeting:
         })
         
     if len(transcript['transcript']) != sum(self.words_count.values()):
-      input(colored(f'Error in Word Count. Missing {sum(self.words_count.values()) - len(transcript["transcript"])} Words. \nPress any key to continue...', 'yellow'))
+      print(colored(f'Error in Word Count. Missing {sum(self.words_count.values()) - len(transcript["transcript"])} Words. \nPress any key to continue...', 'yellow'))
+      WARNINGS_COUNT += 1
 
     with open(f'{self.dest_folder}/transcript.json', 'w') as fp:
       json.dump(transcript, fp, sort_keys=True, indent=2)
@@ -227,9 +232,11 @@ class Meeting:
     :return: Word
   """
   def get_word_by_id(self, id):
+    global ERROR_COUNT
     meeting_id = id.strip().split('.')[0]
     if meeting_id != self.meeting_id:
-      input(colored('Invalid Meeting ID', 'red'))
+      print(colored('Invalid Meeting ID', 'red'))
+      ERROR_COUNT += 1
     
     if id in self.words:
       return self.words[id]
@@ -409,11 +416,13 @@ class Meeting:
     Convert Decision Points to JSON
   """
   def convert_decision_points_to_json(self):
-    print(f'Converting Decisions {self.meeting_id} ...')
+    print(f'Converting Decision Points {self.meeting_id} ...')
+    global WARNINGS_COUNT
 
     decision_xml_path = f'{AMI_DATASET_DIR}/decision/manual/{meeting_id}.decision.xml'
     if not os.path.isfile(decision_xml_path):
-      print('Decision points not Exists')
+      print(colored('Decision Points not Exists in DataSet', 'yellow'))
+      WARNINGS_COUNT += 1
       return False
 
     decisions = []
@@ -441,9 +450,11 @@ all_meeting_ids = GetAllMeetingIDs()
 for meeting_id in all_meeting_ids:
   meeting = Meeting(meeting_id)
   meeting.print_meeting_metadata()
-  meeting.copy_audio_dataset()
+  # meeting.copy_audio_dataset()
   meeting.convert_transcript_to_json()
   meeting.convert_dialog_acts_to_json()
   meeting.convert_decision_points_to_json()
   meeting.convert_extractive_summary_to_json()
   meeting.convert_abstractive_summary_to_json()
+
+print(colored(f"\nExecuted {'Success' if ERROR_COUNT == 0 else 'Failed'} with {ERROR_COUNT} Errors & {WARNINGS_COUNT} Warnings", 'green'))
