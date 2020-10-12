@@ -37,6 +37,9 @@ class Meeting:
     self.dialog_acts = {}
     self._init_da_types()
 
+    self.topics = {}
+    self._init_topics()
+
     self.dest_folder = f'{DATASET_OUT_DIR}/{self.meeting_id}'
     os.makedirs(self.dest_folder, exist_ok=True)
 
@@ -69,6 +72,16 @@ class Meeting:
         'main_type': da_type.get('gloss'),
         'sub_type': da_type_child.get('gloss')
       }
+
+  """
+    Initiaize Topics
+  """
+  def _init_topics(self):    
+    da_types_root = ET.parse(f'{AMI_DATASET_DIR}/ontologies/default-topics.xml').getroot()
+    for topic in da_types_root.findall('topicname'):
+      self.topics[topic.get(NITE_ID)] = topic.get('name')
+      for sub_topic in topic.findall('topicname'):
+        self.topics[sub_topic.get(NITE_ID)] = sub_topic.get('name')
 
   """
     Get Participant MetaData
@@ -478,9 +491,42 @@ class Meeting:
             'segment': content['act']
           })
     
-    with open(f'{self.dest_folder}/segments.json', 'w') as fp:
+    with open(f'{self.dest_folder}/word_segments.json', 'w') as fp:
       json.dump(segments, fp, sort_keys=True, indent=2)
 
+  """
+    Convert Topics Segmentation to JSON
+  """
+  def convert_topics_to_json(self):
+    print(f'Converting Topics {self.meeting_id} ...')
+    global WARNINGS_COUNT
+
+    topic_xml_path = f'{AMI_DATASET_DIR}/topics/{meeting_id}.topic.xml'
+    if not os.path.isfile(topic_xml_path):
+      print(colored('Topics Segmentation not Exists in DataSet', 'yellow'))
+      WARNINGS_COUNT += 1
+      return False
+
+    topics = []
+    topics_file_xml = ET.parse(topic_xml_path).getroot()
+
+    for topic in topics_file_xml.findall('topic'):
+      other_description = topic.get('other_description')
+      topic_id = topic.find('{http://nite.sourceforge.net/}pointer').get('href').replace('default-topics.xml#id(', '').replace(')', '')
+      topic_sentenses = topic.findall('{http://nite.sourceforge.net/}child')
+      acts = []
+      for topic_sentense in topic_sentenses:
+        act = self.get_words_by_range(topic_sentense.get('href'))['act']
+        if act:
+          acts.append(act)
+      topics.append({
+        'topic': self.topics[topic_id],
+        'other_description': other_description,
+        'acts': acts
+      })
+    
+    with open(f'{self.dest_folder}/topic_segmentation.json', 'w') as fp:
+      json.dump(topics, fp, sort_keys=True, indent=2)
 
 # Main
 all_meeting_ids = GetAllMeetingIDs()
@@ -492,6 +538,7 @@ for meeting_id in all_meeting_ids:
   meeting.convert_dialog_acts_to_json()
   meeting.convert_segments_to_json()
   meeting.convert_decision_points_to_json()
+  meeting.convert_topics_to_json()
   meeting.convert_extractive_summary_to_json()
   meeting.convert_abstractive_summary_to_json()
 
