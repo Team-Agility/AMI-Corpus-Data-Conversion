@@ -491,7 +491,7 @@ class Meeting:
             'segment': content['act']
           })
     
-    with open(f'{self.dest_folder}/word_segments.json', 'w') as fp:
+    with open(f'{self.dest_folder}/words_segmentation.json', 'w') as fp:
       json.dump(segments, fp, sort_keys=True, indent=2)
 
   """
