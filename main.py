@@ -405,6 +405,36 @@ class Meeting:
     with open(f'{self.dest_folder}/abstractive_summary.json', 'w') as fp:
       json.dump(abs_summs, fp, sort_keys=True, indent=2)
 
+  """
+    Convert Decision Points to JSON
+  """
+  def convert_decision_points_to_json(self):
+    print(f'Converting Decisions {self.meeting_id} ...')
+
+    decision_xml_path = f'{AMI_DATASET_DIR}/decision/manual/{meeting_id}.decision.xml'
+    if not os.path.isfile(decision_xml_path):
+      print('Decision points not Exists')
+      return False
+
+    decisions = []
+    abs_summ_file_xml = ET.parse(decision_xml_path).getroot()
+
+    for decision in abs_summ_file_xml.findall('decision'):
+      decisions.append([])
+      decision_points = decision.findall('{http://nite.sourceforge.net/}child')
+      for decision_point in decision_points:
+        decision_point_href = decision_point.get('href')
+        act, start_time, end_time = itemgetter('act', 'start_time', 'end_time')(self.get_words_by_range(decision_point_href))         
+        if not act:
+          continue
+        decisions[len(decisions) - 1].append({
+          'act': act,
+          'start_time': start_time,
+          'end_time': end_time
+        })
+    with open(f'{self.dest_folder}/decision_points.json', 'w') as fp:
+      json.dump(decisions, fp, sort_keys=True, indent=2)
+
 
 # Main
 all_meeting_ids = GetAllMeetingIDs()
@@ -414,5 +444,6 @@ for meeting_id in all_meeting_ids:
   meeting.copy_audio_dataset()
   meeting.convert_transcript_to_json()
   meeting.convert_dialog_acts_to_json()
+  meeting.convert_decision_points_to_json()
   meeting.convert_extractive_summary_to_json()
   meeting.convert_abstractive_summary_to_json()
