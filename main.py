@@ -1,4 +1,5 @@
 import xml.etree.ElementTree as ET
+from operator import itemgetter
 from termcolor import colored
 import time
 import glob
@@ -12,6 +13,11 @@ NITE_ID = '{http://nite.sourceforge.net/}id'
 AMI_DATASET_DIR = 'AMI manual annotations v1.6.2'
 DATASET_OUT_DIR = 'dataset'
 
+"""
+  Get All Dataset's Meeting IDs
+  
+  :return: Strring Array with Meeting IDs
+"""
 def GetAllMeetingIDs():
   return [ os.path.basename(folder_path) for folder_path in glob.glob(f'amicorpus/ES*')]
 
@@ -33,6 +39,9 @@ class Meeting:
     os.makedirs(self.dest_folder, exist_ok=True)
 
 
+  """
+    Initiaize Words Tracker
+  """
   def _init_words_tracker(self):
     transcript_file_xml = self.get_transcript_xml_roots()
     for agent, root in transcript_file_xml.items():
@@ -43,6 +52,9 @@ class Meeting:
         self.words_tracker[agent][word.get(NITE_ID)] = False
         self.words[word.get(NITE_ID)] = word
 
+  """
+    Initiaize Dialog Acts Types
+  """
   def _init_da_types(self):
     da_types_root = ET.parse(f'{AMI_DATASET_DIR}/ontologies/da-types.xml').getroot()
     for da_type in da_types_root:
@@ -56,6 +68,12 @@ class Meeting:
         'sub_type': da_type_child.get('gloss')
       }
 
+  """
+    Get Participant MetaData
+
+    :param agent: Participant's Agent ID (A, B, C, D ...)
+    :return: Participant Details dict with global_name, role, sex, age, native_language & region
+  """
   def get_participant_meta(self, agent):
     meetings_meta_root = ET.parse(f'{AMI_DATASET_DIR}/corpusResources/meetings.xml').getroot()
     participants_meta_root = ET.parse(f'{AMI_DATASET_DIR}/corpusResources/participants.xml').getroot()
@@ -76,21 +94,41 @@ class Meeting:
           'region': participant_meta['region']
         }
 
+  """
+    Get Meeting Audio Relative Path
+
+    :return: Meeting Audio Relative Path
+  """
   def get_audio_path(self):
     return f'amicorpus/{self.meeting_id}/audio/{self.meeting_id}.Mix-Headset.wav'
 
+  """
+    Get Word XML Roots
+
+    :return: XML Root array
+  """
   def get_transcript_xml_roots(self):
     file_paths = {}
     for file_path in glob.glob(f'{AMI_DATASET_DIR}/words/{self.meeting_id}*'):
       file_paths[os.path.basename(file_path).split('.')[1]] = ET.parse(file_path).getroot()
     return file_paths
 
+  """
+    Get Total words Count by Participent
+
+    :param agent: Participant's Agent ID (A, B, C, D ...)
+    :return: Number of Words
+  """
   def get_transcript_word_count(self, agent):
     if agent not in self.words_count:
       print('Invalid Agent')
       return None
     return self.words_count[agent]
 
+  """
+    Print Meeting Participant MetaData
+    * global_name, role, sex, age, native_language, region & Total Words in Transcript
+  """
   def print_meeting_metadata(self):
     print(f'\n\n------------ Meeting: {self.meeting_id} --------------')
     transcript_file_xml = self.get_transcript_xml_roots()
@@ -99,6 +137,10 @@ class Meeting:
       transcript_word_count = meeting.get_transcript_word_count(agent)
       print(f"Agent ID: {agent}, Global Name: {speaker['global_name']}, Role: {speaker['role']}, Sex: {speaker['sex']}, Age: {speaker['age']}, Native Language: {speaker['native_language']}, Region: {speaker['region']}, Total Words in Transcript: {transcript_word_count}")
 
+  """
+    Print Meeting Words
+    * Agent ID, Start Time, End Time, Word
+  """
   def print_transcript(self):   
     print(f'--------------- Transcript -----------------')
     timer = time.time() 
@@ -115,6 +157,9 @@ class Meeting:
             print(f'{agent}:', start_time, end_time, content)
       time.sleep(1)
 
+  """
+    Copy Audio File to Output Folder
+  """
   def copy_audio_dataset(self):
     print(f'Copying Audio: {self.meeting_id} ...')
 
@@ -123,6 +168,9 @@ class Meeting:
     shutil.copyfile(src_audio_path, dest_audio_path)
     print()
 
+  """
+    Convert Words to JSON
+  """
   def convert_transcript_to_json(self):
     print(f'Converting Transcript {self.meeting_id} ...')
 
@@ -161,12 +209,23 @@ class Meeting:
     with open(f'{self.dest_folder}/transcript.json', 'w') as fp:
       json.dump(transcript, fp, sort_keys=True, indent=2)
 
+  """
+    Get Dialog Acts XML Roots
+
+    :return: XML Root array
+  """
   def get_dialog_act_xml_roots(self):
     file_paths = {}
     for file_path in glob.glob(f'{AMI_DATASET_DIR}/dialogueActs/{self.meeting_id}*'):
       file_paths[os.path.basename(file_path).split('.')[1]] = ET.parse(file_path).getroot()
     return file_paths
 
+  """
+    Get Word By ID
+
+    :param id: Word ID (XXXXXx.X.wordsx)
+    :return: Word
+  """
   def get_word_by_id(self, id):
     meeting_id = id.strip().split('.')[0]
     if meeting_id != self.meeting_id:
@@ -176,6 +235,12 @@ class Meeting:
       return self.words[id]
     return False
 
+  """
+    Get Words By Range
+
+    :param word_range_href: Word Range HREF (XXXXXXx.X.words.xml#id(XXXXXXx.X.wordsx)..id(XXXXXXx.X.wordsx))
+    :return: Array with Dialog Act, Start Time, End Time
+  """
   def get_words_by_range(self, word_range_href):
     start_time = 99999999.99
     end_time = 0.00
@@ -198,9 +263,20 @@ class Meeting:
       if end_time < float(word_xml.get('endtime')):
         end_time = float(word_xml.get('endtime'))
     if act == '':
-      return [False, start_time, end_time]
-    return [act, start_time, end_time]
+      return {
+      'act': False, 
+      'start_time': start_time,
+      'end_time': end_time
+    }
+    return {
+      'act': act, 
+      'start_time': start_time,
+      'end_time': end_time
+    }
 
+  """
+    Convert Dialog Acts to JSON
+  """
   def convert_dialog_acts_to_json(self):
     print(f'Converting Dialog Act {self.meeting_id} ...')
 
@@ -223,7 +299,7 @@ class Meeting:
         if da_type is not None:
           act_data['type'] = self.da_types[da_type.get('href').split('#')[1].replace('id(', '').replace(')', '')]
         if words is not None:
-          act, start_time, end_time = self.get_words_by_range(words.get('href'))          
+          act, start_time, end_time = itemgetter('act', 'start_time', 'end_time')(self.get_words_by_range(words.get('href')))          
           if not act:
             continue
 
@@ -236,6 +312,12 @@ class Meeting:
     with open(f'{self.dest_folder}/dialog_acts.json', 'w') as fp:
       json.dump(dialog_acts, fp, sort_keys=True, indent=2)
 
+  """
+    Get Dialog Acts By Range
+
+    :param dialog_act_range_href: Dialog Act Range HREF (XXXXXXa.X.dialog-act.xml#id(XXXXXXa.X.dialog-act.dharshi.x))
+    :return: Array with Dialog Act, Start Time, End Time
+  """
   def get_dialog_acts_by_range(self, dialog_act_range_href):
     dialog_act_range = dialog_act_range_href.split('#')[1].split('..')
     dialog_act_id_prefix = '.'.join(dialog_act_range[0].replace('id(', '').replace(')', '').split('.')[0:-1])
@@ -257,7 +339,9 @@ class Meeting:
       return False
     return dialog_acts
 
-
+  """
+    Convert Extractive Summary to JSON
+  """
   def convert_extractive_summary_to_json(self):
     print(f'Converting Extractive Summary {self.meeting_id} ...')
 
@@ -294,6 +378,9 @@ class Meeting:
     with open(f'{self.dest_folder}/extractive_summary.json', 'w') as fp:
       json.dump(ext_summs, fp, sort_keys=True, indent=2)
 
+  """
+    Convert Abstractive Summary to JSON
+  """
   def convert_abstractive_summary_to_json(self):
     print(f'Converting Abstractive Summary {self.meeting_id} ...')
 
@@ -319,6 +406,7 @@ class Meeting:
       json.dump(abs_summs, fp, sort_keys=True, indent=2)
 
 
+# Main
 all_meeting_ids = GetAllMeetingIDs()
 for meeting_id in all_meeting_ids:
   meeting = Meeting(meeting_id)
