@@ -107,11 +107,22 @@ class Meeting:
   """
     Get Word XML Roots
 
-    :return: XML Root array
+    :return: XML Root dict
   """
   def get_transcript_xml_roots(self):
     file_paths = {}
     for file_path in glob.glob(f'{AMI_DATASET_DIR}/words/{self.meeting_id}*'):
+      file_paths[os.path.basename(file_path).split('.')[1]] = ET.parse(file_path).getroot()
+    return file_paths
+
+  """
+    Get Segments XML Roots
+
+    :return: XML Root dict
+  """
+  def get_segments_xml_roots(self):
+    file_paths = {}
+    for file_path in glob.glob(f'{AMI_DATASET_DIR}/segments/{self.meeting_id}*'):
       file_paths[os.path.basename(file_path).split('.')[1]] = ET.parse(file_path).getroot()
     return file_paths
 
@@ -221,7 +232,7 @@ class Meeting:
   """
   def get_dialog_act_xml_roots(self):
     file_paths = {}
-    for file_path in glob.glob(f'{AMI_DATASET_DIR}/dialogueActs/{self.meeting_id}*'):
+    for file_path in glob.glob(f'{AMI_DATASET_DIR}/dialogueActs/{self.meeting_id}*.dialog-act.xml'):
       file_paths[os.path.basename(file_path).split('.')[1]] = ET.parse(file_path).getroot()
     return file_paths
 
@@ -444,17 +455,47 @@ class Meeting:
     with open(f'{self.dest_folder}/decision_points.json', 'w') as fp:
       json.dump(decisions, fp, sort_keys=True, indent=2)
 
+  """
+    Convert Segments to JSON
+  """
+  def convert_segments_to_json(self):
+    print(f'Converting Segments {self.meeting_id} ...')
+
+    segments_xml_roots = self.get_segments_xml_roots()
+    segments = []
+
+    for agent, root in segments_xml_roots.items():
+      for segment in root.findall('segment'):
+        content_words_href = segment.find('{http://nite.sourceforge.net/}child').get('href')
+        content = self.get_words_by_range(content_words_href)
+        start_time = float(segment.get('transcriber_start'))
+        end_time = float(segment.get('transcriber_end'))
+        if content['act']:
+          segments.append({
+            'speaker_id': agent,
+            'start_time': start_time,
+            'end_time': end_time,
+            'segment': content['act']
+          })
+    
+    with open(f'{self.dest_folder}/segments.json', 'w') as fp:
+      json.dump(segments, fp, sort_keys=True, indent=2)
+
 
 # Main
 all_meeting_ids = GetAllMeetingIDs()
 for meeting_id in all_meeting_ids:
   meeting = Meeting(meeting_id)
   meeting.print_meeting_metadata()
-  # meeting.copy_audio_dataset()
+  meeting.copy_audio_dataset()
   meeting.convert_transcript_to_json()
   meeting.convert_dialog_acts_to_json()
+  meeting.convert_segments_to_json()
   meeting.convert_decision_points_to_json()
   meeting.convert_extractive_summary_to_json()
   meeting.convert_abstractive_summary_to_json()
 
-print(colored(f"\nExecuted {'Success' if ERROR_COUNT == 0 else 'Failed'} with {ERROR_COUNT} Errors & {WARNINGS_COUNT} Warnings", 'green'))
+if ERROR_COUNT == 0:
+  print(colored(f"\nExecuted Success with {ERROR_COUNT} Errors & {WARNINGS_COUNT} Warnings", 'green'))
+else:
+  print(colored(f"\nExecuted Failed with {ERROR_COUNT} Errors & {WARNINGS_COUNT} Warnings", 'red'))
