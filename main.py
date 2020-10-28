@@ -39,11 +39,20 @@ class Meeting:
     self.dialog_acts = {}
     self._init_da_types()
 
+    self.ae_types = {}
+    self.argument_structs = {}
+    self._init_ae_types()
+
+    self.ar_types = {}
+    self._init_ar_types()
+
     self.ap_types = {}
     self._init_ap_types()
 
     self.topics = {}
     self._init_topics()
+
+    self.segments = {}
 
     self.dest_folder = f'{DATASET_OUT_DIR}/{self.meeting_id}'
     os.makedirs(self.dest_folder, exist_ok=True)
@@ -85,6 +94,23 @@ class Meeting:
     ap_types_root = ET.parse(f'{AMI_DATASET_DIR}/ontologies/ap-types.xml').getroot()
     for ap_type in ap_types_root.findall('ap-type'):
       self.ap_types[ap_type.get(NITE_ID)] = ap_type.get('gloss')
+
+  """
+    Initiaize AE Types
+  """
+  def _init_ae_types(self):
+    ae_types_root = ET.parse(f'{AMI_DATASET_DIR}/ontologies/ae-types.xml').getroot()
+    for ae_type in ae_types_root.findall('ae-type'):
+      self.ae_types[ae_type.get(NITE_ID)] = ae_type.get('gloss')
+
+  """
+    Initiaize AR Types
+  """
+  def _init_ar_types(self):
+    ar_types_root = ET.parse(f'{AMI_DATASET_DIR}/ontologies/ar-types.xml').getroot()
+    for ar_type in ar_types_root.findall('ar-type'):
+      self.ar_types[ar_type.get(NITE_ID)] = ar_type.get('gloss')
+
 
   """
     Initiaize Topics
@@ -319,6 +345,45 @@ class Meeting:
     }
 
   """
+    Get Segments By Range
+
+    :param segment_range_href: Word Range HREF (XXXXXXx.X.segments.xml#id(XXXXXXx.sync.xxx)..id(XXXXXXx.sync.xxx))
+    :return: dict with Segment, Start Time & End Time
+  """
+  def get_segments_by_range(self, segment_range_href):
+    start_time = 99999999.99
+    end_time = 0.00
+    segment_range = segment_range_href.split('#')[-1].split('..')
+    segment_id_prefix = '.'.join(segment_range[0].replace('id(', '').replace(')', '').split('.')[0:-1])
+    if len(segment_range) < 2:
+      segment_range.append(segment_range[0])
+    start, end = map(int, [segment_no.replace('id(', '').replace(')', '').split('.')[-1].replace('words', '') for segment_no in segment_range])
+    
+    segment = ''
+    for i in range(start, end+1):
+      if f'{segment_id_prefix}.{i}' not in self.segments:
+        continue
+      segment_tmp = self.segments[f'{segment_id_prefix}.{i}']
+      if len(segment) > 0:
+        segment += ' '
+      segment += segment_tmp['segment']
+      if start_time > segment_tmp['start_time']:
+        start_time = segment_tmp['start_time']
+      if end_time < segment_tmp['end_time']:
+        end_time = segment_tmp['end_time']
+    if segment == '':
+      return {
+      'segment': False, 
+      'start_time': start_time,
+      'end_time': end_time
+    }
+    return {
+      'segment': segment, 
+      'start_time': start_time,
+      'end_time': end_time
+    }
+
+  """
     Convert Dialog Acts to JSON
   """
   def convert_dialog_acts_to_json(self):
@@ -515,6 +580,7 @@ class Meeting:
             'end_time': end_time,
             'segment': content['act']
           })
+          self.segments[segment.get(NITE_ID)] = segments[-1]
     
     with open(f'{self.dest_folder}/words_segmentation.json', 'w') as fp:
       json.dump(segments, fp, sort_keys=True, indent=2)
@@ -578,6 +644,94 @@ class Meeting:
     with open(f'{self.dest_folder}/adjacency_pairs.json', 'w') as fp:
       json.dump(adjacency_pairs, fp, sort_keys=True, indent=2)
 
+  """
+    Convert Argument Structs to JSON
+  """
+  def convert_argument_structs_to_json(self):
+    print(f'Converting Argument Structs {self.meeting_id} ...')
+
+    argument_structs = []
+    for file_path in glob.glob(f'{AMI_DATASET_DIR}/argumentation/ae/{self.meeting_id}*'):
+      argument_struct_file_xml = ET.parse(file_path).getroot()
+      speaker_id = os.path.basename(file_path).split('.')[1]
+
+      for argument_struct in argument_struct_file_xml.findall('ae'):
+        ae_type = argument_struct.find(NITE_POINTER).get('href') if argument_struct.find(NITE_POINTER) != None else None
+        dialog_act = self.get_words_by_range(argument_struct.find(NITE_CHILD).get('href'))
+        
+        argument_structs.append({
+          'ae_type': None if ae_type == None else self.ae_types[ae_type.replace('ae-types.xml#id(', '').replace(')', '')],
+          'speaker_id': speaker_id,
+          'act': dialog_act['act'],
+          'start_time': dialog_act['start_time'],
+          'end_time': dialog_act['end_time']
+        })
+        self.argument_structs[argument_struct.get(NITE_ID)] = argument_structs[-1]
+    
+    with open(f'{self.dest_folder}/argument_structs.json', 'w') as fp:
+      json.dump(argument_structs, fp, sort_keys=True, indent=2)
+
+  """
+    Convert Argumentation Rels to JSON
+  """
+  def convert_argumentation_rels_to_json(self):
+    print(f'Converting Argumentation Rels {self.meeting_id} ...')
+    global WARNINGS_COUNT
+
+    argumentation_rels = []
+    argumentation_rels_xml_path = f'{AMI_DATASET_DIR}/argumentation/ar/{meeting_id}.argumentationrels.xml'
+    if not os.path.isfile(argumentation_rels_xml_path):
+      print(colored('Argumentation Rels not Exists in DataSet', 'yellow'))
+      WARNINGS_COUNT += 1
+      return False
+    argumentation_rels_file_xml = ET.parse(argumentation_rels_xml_path).getroot()
+
+    for argumentation_rel in argumentation_rels_file_xml.findall('ar'):
+      ar_type = argumentation_rel.find(".//*[@role='type']").get('href') if argumentation_rel.find(".//*[@role='type']") != None else None
+      source = argumentation_rel.find(".//*[@role='source']").get('href').split('#')[1].replace('id(', '').replace(')', '') if argumentation_rel.find(".//*[@role='source']") is not None else None
+      target = argumentation_rel.find(".//*[@role='target']").get('href').split('#')[1].replace('id(', '').replace(')', '') if argumentation_rel.find(".//*[@role='target']") is not None else None
+      
+
+      argumentation_rels.append({
+        'ar_type': self.ar_types[ar_type.replace('ar-types.xml#id(', '').replace(')', '')] if ar_type != None else None,
+        'source': self.argument_structs[source],
+        'target': self.argument_structs[target]
+      })
+    
+    with open(f'{self.dest_folder}/argumentation_relationships.json', 'w') as fp:
+      json.dump(argumentation_rels, fp, sort_keys=True, indent=2)
+
+  """
+    Convert Argument Discussions to JSON
+  """
+  def convert_argument_discussions_to_json(self):
+    print(f'Converting Argument Discussions {self.meeting_id} ...')
+    global WARNINGS_COUNT
+
+    argument_discussions = []
+    argument_discussions_xml_path = f'{AMI_DATASET_DIR}/argumentation/dis/{meeting_id}.discussions.xml'
+    if not os.path.isfile(argument_discussions_xml_path):
+      print(colored('Argument Discussions not Exists in DataSet', 'yellow'))
+      WARNINGS_COUNT += 1
+      return False
+    argument_discussions_file_xml = ET.parse(argument_discussions_xml_path).getroot()
+
+    for argument_discussion in argument_discussions_file_xml.findall('discussion-fragment'):
+      argument_discussion_type = argument_discussion.get('name')
+      argument_discussion_acts = []
+      for argument_discussion_act in argument_discussion.findall(NITE_CHILD):
+        argument_discussion_act_href = argument_discussion_act.get('href').split('#')[1].replace('id(', '').replace(')', '')    
+        argument_discussion_acts.append(self.get_segments_by_range(argument_discussion_act_href))
+
+      argument_discussions.append({
+        'type': argument_discussion_type.split(' - ')[-1],
+        'segments': argument_discussion_acts
+      })
+    
+    with open(f'{self.dest_folder}/argument_discussions.json', 'w') as fp:
+      json.dump(argument_discussions, fp, sort_keys=True, indent=2)
+
+
 # Main
 all_meeting_ids = GetAllMeetingIDs()
 for meeting_id in all_meeting_ids:
@@ -592,6 +746,9 @@ for meeting_id in all_meeting_ids:
   meeting.convert_topics_to_json()
   meeting.convert_extractive_summary_to_json()
   meeting.convert_abstractive_summary_to_json()
+  meeting.convert_argument_structs_to_json()
+  meeting.convert_argumentation_rels_to_json()  
+  meeting.convert_argument_discussions_to_json()
 
 if ERROR_COUNT == 0:
   print(colored(f"\nExecuted Success with {ERROR_COUNT} Errors & {WARNINGS_COUNT} Warnings", 'green'))
