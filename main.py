@@ -54,6 +54,9 @@ class Meeting:
 
     self.segments = {}
 
+    self.summ_links = {}
+    self.is_summ_links_initialized = False
+
     self.dest_folder = f'{DATASET_OUT_DIR}/{self.meeting_id}'
     os.makedirs(self.dest_folder, exist_ok=True)
 
@@ -94,6 +97,19 @@ class Meeting:
     ap_types_root = ET.parse(f'{AMI_DATASET_DIR}/ontologies/ap-types.xml').getroot()
     for ap_type in ap_types_root.findall('ap-type'):
       self.ap_types[ap_type.get(NITE_ID)] = ap_type.get('gloss')
+
+  """
+    Initiaize Summary Links
+  """
+  def _init_summ_links(self):
+    summ_links_root = ET.parse(f'{AMI_DATASET_DIR}/extractive/{self.meeting_id}.summlink.xml').getroot()
+    for summ_link in summ_links_root.findall('summlink'):
+      extractive_id = summ_link.find(".//*[@role='extractive']").get('href').split('#')[1].replace('id(', '').replace(')', '')
+      abstractive_id = summ_link.find(".//*[@role='abstractive']").get('href').split('#')[1].replace('id(', '').replace(')', '')
+      if abstractive_id not in self.summ_links:
+        self.summ_links[abstractive_id] = [self.get_dialog_acts_by_range(extractive_id)]
+      else:
+        self.summ_links[abstractive_id].append(self.get_dialog_acts_by_range(extractive_id))
 
   """
     Initiaize AE Types
@@ -428,7 +444,7 @@ class Meeting:
     :return: Array with Dialog Act, Start Time, End Time
   """
   def get_dialog_acts_by_range(self, dialog_act_range_href):
-    dialog_act_range = dialog_act_range_href.split('#')[1].split('..')
+    dialog_act_range = dialog_act_range_href.split('#')[-1].split('..')
     dialog_act_id_prefix = '.'.join(dialog_act_range[0].replace('id(', '').replace(')', '').split('.')[0:-1])
     if len(dialog_act_range) < 2:
       dialog_act_range.append(dialog_act_range[0])
@@ -504,6 +520,9 @@ class Meeting:
   """
   def convert_abstractive_summary_to_json(self):
     print(f'Converting Abstractive Summary {self.meeting_id} ...')
+    if self.is_summ_links_initialized == False:
+      self._init_summ_links()
+      self.is_summ_links_initialized = True
 
     abs_summs = {
       'abstract': [],
@@ -515,13 +534,25 @@ class Meeting:
     abs_summ_file_xml = ET.parse(f'{AMI_DATASET_DIR}/abstractive/{meeting_id}.abssumm.xml').getroot()
 
     for abstract in abs_summ_file_xml.find('abstract').findall('sentence'):
-      abs_summs['abstract'].append(abstract.text)
+      abs_summs['abstract'].append({
+        'summary': abstract.text,
+        'extract_summ': self.summ_links[abstract.get(NITE_ID)] if abstract.get(NITE_ID) in self.summ_links else []
+      })
     for action in abs_summ_file_xml.find('actions').findall('sentence'):
-      abs_summs['actions'].append(action.text)
+      abs_summs['actions'].append({
+        'summary': action.text,
+        'extract_summ': self.summ_links[action.get(NITE_ID)] if action.get(NITE_ID) in self.summ_links else []
+      })
     for decision in abs_summ_file_xml.find('decisions').findall('sentence'):
-      abs_summs['decisions'].append(decision.text)
+      abs_summs['decisions'].append({
+        'summary': decision.text,
+        'extract_summ': self.summ_links[decision.get(NITE_ID)] if decision.get(NITE_ID) in self.summ_links else []
+      })
     for problem in abs_summ_file_xml.find('problems').findall('sentence'):
-      abs_summs['problems'].append(problem.text)
+      abs_summs['problems'].append({
+        'summary': problem.text,
+        'extract_summ': self.summ_links[problem.get(NITE_ID)] if problem.get(NITE_ID) in self.summ_links else []
+      })
 
     with open(f'{self.dest_folder}/abstractive_summary.json', 'w') as fp:
       json.dump(abs_summs, fp, sort_keys=True, indent=2)
@@ -737,7 +768,7 @@ all_meeting_ids = GetAllMeetingIDs()
 for meeting_id in all_meeting_ids:
   meeting = Meeting(meeting_id)
   meeting.print_meeting_metadata()
-  meeting.copy_audio_dataset()
+  # meeting.copy_audio_dataset()
   meeting.convert_transcript_to_json()
   meeting.convert_dialog_acts_to_json()
   meeting.convert_adjacency_pairs_to_json()
