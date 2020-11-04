@@ -124,6 +124,18 @@ class Meeting:
         self.summ_links[abstractive_id]['abs'].append(self.dialog_acts[extractive_id])
 
   """
+    Check dialog act in Extractive Summary
+  """
+  def check_dialog_act_in_ext_summ(self, dialog_act_href):
+    summ_links_root = ET.parse(f'{AMI_DATASET_DIR}/extractive/{self.meeting_id}.summlink.xml').getroot()
+    for summ_link in summ_links_root.findall('summlink'):
+      extractive_id = summ_link.find(".//*[@role='extractive']").get('href')
+      #abstractive_id = summ_link.find(".//*[@role='abstractive']").get('href')
+      if dialog_act_href == extractive_id:
+        return True
+    return False
+
+  """
     Initiaize AE Types
   """
   def _init_ae_types(self):
@@ -722,10 +734,18 @@ class Meeting:
       'far_than_3s': 0,
       'values': []
     }
+
     for idx1, val1 in enumerate(self.metadata['ap']):
       current_time = self.get_dialog_acts_by_range(val1[0])['end_time']
       for idx2, val2 in enumerate(val1):
-        self.metadata['ap'][idx1][idx2] = self.get_dialog_acts_by_range(val2)
+        is_in_ext_summ = self.check_dialog_act_in_ext_summ(val2)
+        val2 = self.get_dialog_acts_by_range(val2)
+        self.metadata['ap'][idx1][idx2] = {
+          'start_time': val2['start_time'],
+          'end_time': val2['end_time'],
+          'act': val2['act'],
+          'is_in_ext_summ': is_in_ext_summ
+        }
         self.metadata['ap_meta']['total'] += 1
         if current_time + 3 < self.metadata['ap'][idx1][idx2]['start_time']:          
           self.metadata['ap_meta']['values'].append([idx1, current_time])
