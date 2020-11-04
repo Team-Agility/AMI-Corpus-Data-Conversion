@@ -28,6 +28,7 @@ def GetAllMeetingIDs():
 class Meeting:
   def __init__(self, meeting_id):
     self.meeting_id = meeting_id
+    self.metadata = {}
 
     self.words_tracker = {}
     self.words_count = {}
@@ -107,9 +108,20 @@ class Meeting:
       extractive_id = summ_link.find(".//*[@role='extractive']").get('href').split('#')[1].replace('id(', '').replace(')', '')
       abstractive_id = summ_link.find(".//*[@role='abstractive']").get('href').split('#')[1].replace('id(', '').replace(')', '')
       if abstractive_id not in self.summ_links:
-        self.summ_links[abstractive_id] = [self.get_dialog_acts_by_range(extractive_id)]
+        self.summ_links[abstractive_id] = {
+          'types': {
+            self.dialog_acts[extractive_id]['type']['sub_type']: 1
+          },
+          'abs': [self.dialog_acts[extractive_id]]
+        }
       else:
-        self.summ_links[abstractive_id].append(self.get_dialog_acts_by_range(extractive_id))
+        if 'type' in self.dialog_acts[extractive_id]:
+          sub_type = self.dialog_acts[extractive_id]['type']['sub_type']
+          if sub_type in self.summ_links[abstractive_id]['types']:
+            self.summ_links[abstractive_id]['types'][sub_type] += 1
+          else:
+            self.summ_links[abstractive_id]['types'][sub_type] = 1
+        self.summ_links[abstractive_id]['abs'].append(self.dialog_acts[extractive_id])
 
   """
     Initiaize AE Types
@@ -434,6 +446,7 @@ class Meeting:
           self.dialog_acts[act_xml.get(NITE_ID)] = act_data
         dialog_acts['acts'].append(act_data)
 
+    self.metadata['dialog_acts'] = len(self.dialog_acts)
     with open(f'{self.dest_folder}/dialog_acts.json', 'w') as fp:
       json.dump(dialog_acts, fp, sort_keys=True, indent=2)
 
@@ -453,6 +466,7 @@ class Meeting:
     dialog_acts = ''
     start_time = 99999999.99
     end_time = 0.00
+    no_of_da = 0
     for i in range(start, end+1):
       if f'{dialog_act_id_prefix}.{i}' not in self.dialog_acts:
         continue
@@ -464,16 +478,19 @@ class Meeting:
       if len(dialog_acts) > 0:
         dialog_acts += ' '
       dialog_acts += dialog_act
+      no_of_da += 1
     if dialog_acts == '':
       return {
         'act': False,
         'start_time': start_time,
-        'end_time': end_time
+        'end_time': end_time,
+        'count': no_of_da
       }
     return {
         'act': dialog_acts,
         'start_time': start_time,
-        'end_time': end_time
+        'end_time': end_time,
+        'count': no_of_da
       }
 
   """
@@ -484,6 +501,7 @@ class Meeting:
 
     ext_summs = []
     ext_summ_file_xml = ET.parse(f'{AMI_DATASET_DIR}/extractive/{meeting_id}.extsumm.xml').getroot()
+    self.metadata['ext_sentense_da_count'] = 0
 
     for ext_summ in ext_summ_file_xml:
       for dialog_act_xml in ext_summ.findall(NITE_CHILD):
@@ -494,6 +512,7 @@ class Meeting:
         if len(dialog_act_range) < 2:
           dialog_act_range.append(dialog_act_range[0])
         start, end = map(int, [dialog_act_no.replace('id(', '').replace(')', '').split('.')[-1].replace('dialog-act', '') for dialog_act_no in dialog_act_range])
+        self.metadata['ext_sentense_da_count'] += self.get_dialog_acts_by_range(dialog_act_href)['count'] 
 
         ext_summ = self.dialog_acts[dialog_act_range[0].replace('id(', '').replace(')', '')]
         main_type = None
@@ -512,6 +531,7 @@ class Meeting:
           }
         })
 
+    self.metadata['ext_sentense_count'] = len(ext_summs)
     with open(f'{self.dest_folder}/extractive_summary.json', 'w') as fp:
       json.dump(ext_summs, fp, sort_keys=True, indent=2)
 
@@ -532,28 +552,37 @@ class Meeting:
     }
     
     abs_summ_file_xml = ET.parse(f'{AMI_DATASET_DIR}/abstractive/{meeting_id}.abssumm.xml').getroot()
-
+    ext_count = 0
+    
     for abstract in abs_summ_file_xml.find('abstract').findall('sentence'):
       abs_summs['abstract'].append({
         'summary': abstract.text,
         'extract_summ': self.summ_links[abstract.get(NITE_ID)] if abstract.get(NITE_ID) in self.summ_links else []
       })
+      ext_count += len(abs_summs['abstract'][-1]['extract_summ'])
     for action in abs_summ_file_xml.find('actions').findall('sentence'):
       abs_summs['actions'].append({
         'summary': action.text,
         'extract_summ': self.summ_links[action.get(NITE_ID)] if action.get(NITE_ID) in self.summ_links else []
       })
+      ext_count += len(abs_summs['actions'][-1]['extract_summ'])
     for decision in abs_summ_file_xml.find('decisions').findall('sentence'):
       abs_summs['decisions'].append({
         'summary': decision.text,
         'extract_summ': self.summ_links[decision.get(NITE_ID)] if decision.get(NITE_ID) in self.summ_links else []
       })
+      ext_count += len(abs_summs['decisions'][-1]['extract_summ'])
     for problem in abs_summ_file_xml.find('problems').findall('sentence'):
       abs_summs['problems'].append({
         'summary': problem.text,
         'extract_summ': self.summ_links[problem.get(NITE_ID)] if problem.get(NITE_ID) in self.summ_links else []
       })
+      ext_count += len(abs_summs['problems'][-1]['extract_summ'])
 
+    self.metadata['abs_summ'] = {
+      'ext_summs_count': ext_count,
+      'abs_summs_count': len(abs_summs['abstract']) + len(abs_summs['actions']) + len(abs_summs['decisions']) + len(abs_summs['problems']) 
+    }
     with open(f'{self.dest_folder}/abstractive_summary.json', 'w') as fp:
       json.dump(abs_summs, fp, sort_keys=True, indent=2)
 
@@ -612,7 +641,8 @@ class Meeting:
             'segment': content['act']
           })
           self.segments[segment.get(NITE_ID)] = segments[-1]
-    
+          
+    self.metadata['segmants'] = len(self.segments)
     with open(f'{self.dest_folder}/words_segmentation.json', 'w') as fp:
       json.dump(segments, fp, sort_keys=True, indent=2)
 
@@ -655,6 +685,7 @@ class Meeting:
   """
   def convert_adjacency_pairs_to_json(self):
     print(f'Converting Adjacency Pairs {self.meeting_id} ...')
+    self.metadata['ap'] = []
 
     adjacency_pairs = []
     adjacency_pairs_xml_path = f'{AMI_DATASET_DIR}/dialogueActs/{meeting_id}.adjacency-pairs.xml'
@@ -671,7 +702,36 @@ class Meeting:
           'source': self.get_dialog_acts_by_range(source) if source else None,
           'target': self.get_dialog_acts_by_range(target) if target else None
         })
+
+        if not adjacency_pairs[-1]['source'] or not adjacency_pairs[-1]['target']:
+          continue
+        target_idx = -1
+        for idx, val in enumerate(self.metadata['ap']):
+          for j in val:
+            if j == source:
+              target_idx = idx
+              break
+        
+        if target_idx == -1:
+          self.metadata['ap'].append([source, target])
+        else:
+          self.metadata['ap'][target_idx].append(target)
     
+    self.metadata['ap_meta'] = {
+      'total': 0,
+      'far_than_3s': 0,
+      'values': []
+    }
+    for idx1, val1 in enumerate(self.metadata['ap']):
+      current_time = self.get_dialog_acts_by_range(val1[0])['end_time']
+      for idx2, val2 in enumerate(val1):
+        self.metadata['ap'][idx1][idx2] = self.get_dialog_acts_by_range(val2)
+        self.metadata['ap_meta']['total'] += 1
+        if current_time + 3 < self.metadata['ap'][idx1][idx2]['start_time']:          
+          self.metadata['ap_meta']['values'].append([idx1, current_time])
+          self.metadata['ap_meta']['far_than_3s'] += 1
+        current_time = self.metadata['ap'][idx1][idx2]['end_time']
+
     with open(f'{self.dest_folder}/adjacency_pairs.json', 'w') as fp:
       json.dump(adjacency_pairs, fp, sort_keys=True, indent=2)
 
@@ -762,6 +822,9 @@ class Meeting:
     with open(f'{self.dest_folder}/argument_discussions.json', 'w') as fp:
       json.dump(argument_discussions, fp, sort_keys=True, indent=2)
 
+  def metadata_to_json(self):
+    with open(f'{self.dest_folder}/metadata.json', 'w') as fp:
+      json.dump(self.metadata, fp, sort_keys=True, indent=2)
 
 # Main
 all_meeting_ids = GetAllMeetingIDs()
@@ -780,6 +843,21 @@ for meeting_id in all_meeting_ids:
   meeting.convert_argument_structs_to_json()
   meeting.convert_argumentation_rels_to_json()  
   meeting.convert_argument_discussions_to_json()
+  meeting.metadata_to_json()
+
+print('--------------------------------')
+all_metadata = []
+for meeting_id in all_meeting_ids:
+  with open(f'dataset/{meeting_id}/metadata.json') as outfile:
+    metadata = json.load(outfile)
+    metadata['ext_sentense_da_count_per'] = int((metadata['ext_sentense_da_count'] / metadata['abs_summ']['ext_summs_count']) * 100)
+    all_metadata.append({
+      'meeting': meeting_id,
+      'metadata': metadata
+    })
+    print(metadata)
+with open(f'dataset/all_metadata.json', 'w') as fp:
+      json.dump(all_metadata, fp, sort_keys=True, indent=2)
 
 if ERROR_COUNT == 0:
   print(colored(f"\nExecuted Success with {ERROR_COUNT} Errors & {WARNINGS_COUNT} Warnings", 'green'))
