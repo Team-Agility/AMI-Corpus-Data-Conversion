@@ -555,7 +555,7 @@ class Meeting:
             'sub_type': sub_type
           }
         })
-        
+
         if not sub_type:
           continue
         if sub_type in self.metadata['ext_summ']['types']:
@@ -809,6 +809,7 @@ class Meeting:
   def convert_argumentation_rels_to_json(self):
     print(f'Converting Argumentation Rels {self.meeting_id} ...')
     global WARNINGS_COUNT
+    self.metadata['args'] = []
 
     argumentation_rels = []
     argumentation_rels_xml_path = f'{AMI_DATASET_DIR}/argumentation/ar/{meeting_id}.argumentationrels.xml'
@@ -829,7 +830,25 @@ class Meeting:
         'source': self.argument_structs[source],
         'target': self.argument_structs[target]
       })
+
+      if not argumentation_rels[-1]['source'] or not argumentation_rels[-1]['target']:
+          continue
+      target_idx = -1
+      for idx, val in enumerate(self.metadata['args']):
+        for j in val:
+          if j == source:
+            target_idx = idx
+            break
+      
+      if target_idx == -1:
+        self.metadata['args'].append([source, target])
+      else:
+        self.metadata['args'][target_idx].append(target)
     
+    for idx1, val1 in enumerate(self.metadata['args']):
+      for idx2, val2 in enumerate(val1):
+        self.metadata['args'][idx1][idx2] = self.argument_structs[val2]
+
     with open(f'{self.dest_folder}/argumentation_relationships.json', 'w') as fp:
       json.dump(argumentation_rels, fp, sort_keys=True, indent=2)
 
