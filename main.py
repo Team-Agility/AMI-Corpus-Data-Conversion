@@ -428,7 +428,9 @@ class Meeting:
   """
   def convert_dialog_acts_to_json(self):
     print(f'Converting Dialog Act {self.meeting_id} ...')
-
+    self.metadata['da'] = {
+      'types': {}
+    }
     dialog_acts = {
       'acts': [],
       'speakers': {}
@@ -457,6 +459,14 @@ class Meeting:
           act_data['end_time'] = end_time
           self.dialog_acts[act_xml.get(NITE_ID)] = act_data
         dialog_acts['acts'].append(act_data)
+
+        if 'type' not in dialog_acts['acts'][-1]:
+          continue
+        sub_type = dialog_acts['acts'][-1]['type']['sub_type']
+        if sub_type in self.metadata['da']['types']:
+          self.metadata['da']['types'][sub_type] += 1
+        else:
+          self.metadata['da']['types'][sub_type] = 1
 
     self.metadata['dialog_acts'] = len(self.dialog_acts)
     with open(f'{self.dest_folder}/dialog_acts.json', 'w') as fp:
@@ -510,6 +520,9 @@ class Meeting:
   """
   def convert_extractive_summary_to_json(self):
     print(f'Converting Extractive Summary {self.meeting_id} ...')
+    self.metadata['ext_summ'] = {
+      'types': {}
+    }
 
     ext_summs = []
     ext_summ_file_xml = ET.parse(f'{AMI_DATASET_DIR}/extractive/{meeting_id}.extsumm.xml').getroot()
@@ -542,6 +555,13 @@ class Meeting:
             'sub_type': sub_type
           }
         })
+        
+        if not sub_type:
+          continue
+        if sub_type in self.metadata['ext_summ']['types']:
+          self.metadata['ext_summ']['types'][sub_type] += 1
+        else:
+          self.metadata['ext_summ']['types'][sub_type] = 1
 
     self.metadata['ext_sentense_count'] = len(ext_summs)
     with open(f'{self.dest_folder}/extractive_summary.json', 'w') as fp:
@@ -752,6 +772,7 @@ class Meeting:
           self.metadata['ap_meta']['far_than_3s'] += 1
         current_time = self.metadata['ap'][idx1][idx2]['end_time']
 
+    self.metadata['ap_meta']['total_sequences'] = len(self.metadata['ap'])
     with open(f'{self.dest_folder}/adjacency_pairs.json', 'w') as fp:
       json.dump(adjacency_pairs, fp, sort_keys=True, indent=2)
 
