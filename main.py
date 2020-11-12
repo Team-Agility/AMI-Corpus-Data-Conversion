@@ -1,6 +1,10 @@
+from nltk.stem import WordNetLemmatizer 
+from nltk.tokenize import word_tokenize
 import xml.etree.ElementTree as ET
+from nltk.corpus import stopwords
 from operator import itemgetter
 from termcolor import colored
+import nltk
 import time
 import glob
 import os
@@ -16,6 +20,8 @@ AMI_DATASET_DIR = 'AMI manual annotations v1.6.2'
 DATASET_OUT_DIR = 'dataset'
 WARNINGS_COUNT = 0
 ERROR_COUNT = 0
+stop_words = set(stopwords.words('english'))
+lemmatizer = WordNetLemmatizer()
 
 """
   Get All Dataset's Meeting IDs
@@ -435,6 +441,10 @@ class Meeting:
       'acts': [],
       'speakers': {}
     }
+    da_txt = ''
+    da_pos_txt = ''
+    filtered_txt = ''
+    filtered_pos_txt = ''
     
     transcript_file_xml = self.get_dialog_act_xml_roots()
     for agent, root in transcript_file_xml.items():
@@ -467,6 +477,37 @@ class Meeting:
           self.metadata['da']['types'][sub_type] += 1
         else:
           self.metadata['da']['types'][sub_type] = 1
+        text = word_tokenize(act)
+        tags = nltk.pos_tag(text)
+        pos = ''
+        for tag in tags:
+          pos += f"{tag[1]} "
+        filtered_sentence = ' '.join([lemmatizer.lemmatize(w) for w in text if not w in stop_words])
+        filtered_pos_sentence = ''
+        tags = nltk.pos_tag([w for w in text if not w in stop_words])
+        for tag in tags:
+          filtered_pos_sentence += f"{tag[1]} "
+        da_txt += f"{agent}\t{act}\t{act}\t{sub_type}\n"
+        da_pos_txt += f"{agent}\t{pos}\t{pos}\t{sub_type}\n"
+        filtered_txt += f"{agent}\t{filtered_sentence}\t{filtered_sentence}\t{sub_type}\n"
+        filtered_pos_txt += f"{agent}\t{filtered_pos_sentence}\t{filtered_pos_sentence}\t{sub_type}\n"
+    
+    # Write to TXT
+    f = open(f'sentences_pos.txt', 'a')
+    f.write(da_pos_txt)
+    f.close()
+
+    f = open(f'sentences.txt', 'a')
+    f.write(da_txt)
+    f.close()
+
+    f = open(f'filtered_sentences.txt', 'a')
+    f.write(da_txt)
+    f.close()
+
+    f = open(f'filtered_pos_sentences.txt', 'a')
+    f.write(filtered_pos_txt)
+    f.close()
 
     self.metadata['dialog_acts'] = len(self.dialog_acts)
     with open(f'{self.dest_folder}/dialog_acts.json', 'w') as fp:
@@ -561,9 +602,10 @@ class Meeting:
         if sub_type in self.metadata['ext_summ']['types']:
           self.metadata['ext_summ']['types'][sub_type] += 1
         else:
-          self.metadata['ext_summ']['types'][sub_type] = 1
+          self.metadata['ext_summ']['types'][sub_type] = 1        
 
     self.metadata['ext_sentense_count'] = len(ext_summs)
+
     with open(f'{self.dest_folder}/extractive_summary.json', 'w') as fp:
       json.dump(ext_summs, fp, sort_keys=True, indent=2)
 
@@ -887,6 +929,8 @@ class Meeting:
       json.dump(self.metadata, fp, sort_keys=True, indent=2)
 
 # Main
+for fn in ["sentences.txt", "sentences_pos.txt", "filtered_sentences.txt", "filtered_pos_sentences.txt"]:
+  os.remove(fn) if os.path.exists(fn) else None
 all_meeting_ids = GetAllMeetingIDs()
 for meeting_id in all_meeting_ids:
   meeting = Meeting(meeting_id)
