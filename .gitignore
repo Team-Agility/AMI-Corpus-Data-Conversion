@@ -4,6 +4,7 @@ AMI manual annotations v1.6.2/
 dataset/
 dataset.zip
 AMI_ES_Audio_Dataset_with_Manual_Annotation_v1.6.2.zip
+*.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
